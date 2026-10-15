@@ -1,0 +1,1204 @@
+{
+  "name": "Centreon - Diagnostic et ticket GLPI (exemple public)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "centreon-alerts",
+        "authentication": "headerAuth",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -1072,
+        -32
+      ],
+      "id": "f5216078-9888-4745-ab73-7416dbf8c878",
+      "name": "Webhook"
+    },
+    {
+      "parameters": {
+        "url": "https://glpi.example.com/apirest.php/initSession",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "App-Token",
+              "value": "REPLACE_WITH_GLPI_APP_TOKEN"
+            },
+            {
+              "name": "Authorization",
+              "value": "user_token REPLACE_WITH_GLPI_USER_TOKEN"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a63a2f0a-e6eb-41f2-ba28-c5653903d1b4",
+      "name": "Get Token GLPI",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        -272,
+        -304
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://glpi.example.com/apirest.php/search/Computer/",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "criteria[0][field]",
+              "value": "1"
+            },
+            {
+              "name": "criteria[0][searchtype]",
+              "value": "contains"
+            },
+            {
+              "name": "criteria[0][value]",
+              "value": "={{ $('Webhook').item.json.body.host }}"
+            },
+            {
+              "name": "forcedisplay[0]",
+              "value": "2"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "App-Token",
+              "value": "REPLACE_WITH_GLPI_APP_TOKEN"
+            },
+            {
+              "name": "Authorization",
+              "value": "user_token REPLACE_WITH_GLPI_USER_TOKEN"
+            },
+            {
+              "name": "Session-Token",
+              "value": "={{ $json.session_token }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "6327167d-51ae-4eac-800a-283e75ed804c",
+      "name": "Recherche ID",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        -48,
+        -304
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://glpi.example.com/apirest.php/Ticket/",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "App-Token",
+              "value": "REPLACE_WITH_GLPI_APP_TOKEN"
+            },
+            {
+              "name": "Authorization",
+              "value": "user_token REPLACE_WITH_GLPI_USER_TOKEN"
+            },
+            {
+              "name": "Session-Token",
+              "value": "={{ $('Get Token GLPI').item.json.session_token }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"input\": [\n    {\n      \"name\": {{ JSON.stringify(\"[Centreon][\" + $('Webhook').first().json.body.status + \"] \" + $('Webhook').first().json.body.host + \" - \" + $('Webhook').first().json.body.service) }},\n      \"content\": {{ JSON.stringify(\n        \"⚠️ Alerte Centreon ⚠️\\n\\n\" +\n        \"Serveur : \" + $('Webhook').first().json.body.host + \"\\n\" +\n        \"IP : \" + $('Webhook').first().json.body.ip + \"\\n\" +\n        \"Service : \" + $('Webhook').first().json.body.service + \"\\n\" +\n        \"Sévérité : \" + $('Webhook').first().json.body.status + \"\\n\" +\n        \"Type : \" + $('Webhook').first().json.body.notification_type + \"\\n\" +\n        \"Incident : \" + $('Webhook').first().json.body.incident_key + \"\\n\" +\n        \"Date : \" + $('Webhook').first().json.body.timestamp + \"\\n\" +\n        \"Message Centreon : \" + $('Webhook').first().json.body.output + \"\\n\\n\" +\n        \"--- DIAGNOSTIC IA ---\\n\\n\" +\n        $('AI Agent').first().json.output\n      ) }},\n      \"urgency\": \"3\",\n      \"items_id\": {\n        \"Computer\": [\n          \"{{ $('Recherche ID').first().json.data[0]['2'] }}\"\n        ]\n      }\n    }\n  ]\n}",
+        "options": {}
+      },
+      "id": "f692ebf4-4e7f-4f13-a4a0-6054abe17fcd",
+      "name": "Création de ticket",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        1840,
+        -304
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://loki.example.internal:3100/loki/api/v1/query_range",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "query",
+              "value": "={{ $('Identification instance').first().json.instance_identifiee ? '{host=' + JSON.stringify($('Webhook').first().json.body.host) + ',container=' + JSON.stringify($('Identification instance').first().json.instance) + '}' : '{host=' + JSON.stringify($('Webhook').first().json.body.host) + '}' }}"
+            },
+            {
+              "name": "limit",
+              "value": "1000"
+            },
+            {
+              "name": "start",
+              "value": "={{ (new Date($('Webhook').first().json.body.timestamp).getTime() - 300000) * 1000000 }}"
+            },
+            {
+              "name": "end",
+              "value": "={{ new Date($('Webhook').first().json.body.timestamp).getTime() * 1000000 }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        176,
+        -304
+      ],
+      "id": "fcad9520-bf27-44c7-9090-532d742996f8",
+      "name": "Loki Get Log"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{\n`Analyse cet incident Centreon et produis un diagnostic SRE.\n\n=== ALERTE CENTREON ===\n${JSON.stringify($('Webhook').first().json.body, null, 2)}\n\n=== MÉTRIQUES CENTREON / INFLUXDB ===\nHistorique des 30 minutes précédant la notification :\n\n${$('Transformation Centreon').first().json.centreon_formate}\n\n=== MÉTRIQUES PROMETHEUS ===\n${$('Transformation Prometheus').first().json.prometheus_formate || 'Aucune métrique Prometheus disponible.'}\n\n=== LOGS LOKI ===\nLogs des 5 minutes précédant la notification :\n\n${$('Transformation Log').first().json.logs_formates || 'Aucun log Loki disponible.'}\n\nAnalyse uniquement les données fournies.\nDistingue les faits des hypothèses.\nAucune remédiation automatique.`\n}}\n\n",
+        "options": {
+          "systemMessage": "=Tu es un expert SRE (Site Reliability Engineer) spécialisé dans\nla supervision, le diagnostic d'incidents et l'analyse d'infrastructures IT.\n\nTu analyses les alertes Centreon en croisant plusieurs sources :\n- Les informations de l'alerte Centreon.\n- Les métriques historiques InfluxDB sur les 30 minutes précédant l'alerte.\n- Les métriques système, processus et conteneurs Prometheus, si disponibles.\n- Les logs Loki sur les 5 minutes précédant l'alerte, si disponibles.\n- L'historique d'incidents Qdrant, uniquement si l'outil est connecté.\n\nOBJECTIF\n\nProduire un diagnostic technique fiable, fondé exclusivement sur\nles données disponibles.\n\nIdentifier :\n- La nature exacte de l'incident.\n- Les anomalies réellement observées.\n- Les événements précédant le changement d'état.\n- Les éventuelles relations entre métriques et logs.\n- La cause technique la plus probable, si les preuves le permettent.\n- Les vérifications manuelles utiles pour confirmer le diagnostic.\n\nNe jamais chercher à formuler une cause à tout prix.\nUn diagnostic incomplet mais rigoureux est préférable à une explication\ndétaillée reposant sur des suppositions.\n\n==================================================\n1. DÉMARCHE D'ANALYSE\n==================================================\n\n1. QUALIFICATION DE L'ALERTE\n\nIdentifier :\n- L'hôte concerné.\n- Le service concerné.\n- L'état signalé par Centreon.\n- La date et l'heure de notification.\n- Le message de supervision, s'il est fourni.\n\nDéterminer la catégorie de l'incident :\n- CPU.\n- Mémoire.\n- Swap.\n- Disque.\n- Réseau.\n- Disponibilité d'un hôte.\n- État d'un service.\n- État d'un processus.\n- État d'un conteneur.\n- Autre incident.\n\nNe pas supposer qu'une alerte de disponibilité est provoquée\npar une saturation des ressources.\n\nSi le nom exact du service, du processus ou du conteneur concerné\nn'est pas fourni, rechercher cette information dans les sources\ndisponibles sans l'inventer.\n\n2. ANALYSE CHRONOLOGIQUE\n\nUtiliser l'horodatage de l'alerte Centreon comme référence.\n\nReconstituer la chronologie des événements pertinents :\n- Situation précédant l'incident.\n- Apparition d'éventuelles anomalies.\n- Changements d'état observés.\n- Événements applicatifs ou système.\n- Notification Centreon.\n\nRespecter les horodatages propres à chaque source.\n\nDistinguer :\n- L'heure de collecte d'une métrique.\n- La période utilisée pour son calcul.\n- L'heure d'évaluation d'une requête.\n- L'heure d'un événement enregistré dans un log.\n- L'heure de notification Centreon.\n\nNe jamais présenter ces instants comme identiques\nsans preuve.\n\n3. ANALYSE INFLUXDB\n\nExaminer l'historique des métriques disponibles sur les\n30 minutes précédant la notification.\n\nIdentifier :\n- Les variations significatives.\n- Les pics.\n- Les tendances.\n- Les éventuelles ruptures.\n- Les dernières mesures disponibles avant l'alerte.\n\nTenir compte de la fréquence d'échantillonnage.\n\nUne série de points espacés ne permet pas de connaître\nl'évolution exacte entre ces points.\n\nNe jamais affirmer qu'une ressource est restée stable\npendant toute la période si les mesures sont insuffisantes.\n\nIMPORTANT :\n\nCertaines métriques peuvent regrouper plusieurs processus\nou plusieurs conteneurs.\n\nSi l'identité de la ressource associée à une mesure\nn'est pas explicitement présente, ne jamais attribuer\ncette valeur à un processus ou conteneur particulier.\n\nNe pas interpréter un pic observé sur un conteneur non identifié\ncomme une preuve concernant le conteneur visé par l'alerte.\n\n4. ANALYSE PROMETHEUS\n\nUtiliser Prometheus pour compléter l'analyse avec les métriques\nsystème, processus et conteneurs disponibles.\n\nTenir compte des fenêtres temporelles des fonctions PromQL.\n\nExemples :\n- Une moyenne CPU sur 5 minutes n'est pas une mesure instantanée.\n- Une consommation processus sur 2 minutes représente\n  une activité calculée sur cette période.\n- Une métrique de consommation d'un conteneur ne démontre\n  pas à elle seule que celui-ci est encore en fonctionnement.\n\nPour les processus et conteneurs :\n- Conserver leur nom lorsqu'il est disponible.\n- Examiner leur consommation uniquement si elle est pertinente\n  pour la catégorie d'incident.\n- Ne pas interpréter une consommation élevée comme une cause\n  d'arrêt sans preuve supplémentaire.\n\nPour les métriques CPU des processus :\n- Tenir compte du fait que 100 % peut représenter\n  approximativement un cœur CPU.\n- Ne pas comparer directement ce pourcentage avec\n  l'utilisation globale de l'hôte sans tenir compte\n  du nombre de cœurs et de la méthode de calcul.\n\nPour le load average :\n- Ne jamais conclure à une saturation sans connaître\n  le nombre de CPU et le contexte de la machine.\n\nPour le disque :\n- Distinguer utilisation de l'espace disque,\n  activité d'entrée/sortie et saturation réelle des I/O.\n- Une partition utilisée à 75 % ne constitue pas\n  à elle seule une preuve de saturation ou de panne.\n\n5. ANALYSE LOKI\n\nExaminer les logs disponibles dans la fenêtre temporelle fournie.\n\nIdentifier en priorité les événements susceptibles d'expliquer\ndirectement le changement d'état signalé par Centreon.\n\nExemples d'événements :\n- Démarrage d'un service.\n- Arrêt d'un service.\n- Redémarrage.\n- Signal d'interruption.\n- Terminaison d'un processus.\n- Crash applicatif.\n- Erreur fatale.\n- OOM killer.\n- Échec d'authentification.\n- Erreur réseau.\n- Erreur de stockage.\n- Commande système explicite.\n\nConserver les noms de services, processus ou conteneurs\nuniquement lorsqu'ils sont présents dans les données.\n\nNe pas confondre :\n- Logs de démarrage.\n- Logs de configuration.\n- Logs d'exploitation normale.\n- Logs de maintenance.\n- Logs d'erreur.\n- Logs d'arrêt.\n\nUne activité de configuration précédant un incident\nn'en constitue pas automatiquement la cause.\n\nUn outil mentionné dans les logs ne doit pas être considéré\ncomme responsable de l'incident sans preuve.\n\nExemple général :\nUn programme d'initialisation peut utiliser Ansible\npour configurer une application au démarrage.\nCela ne prouve pas qu'Ansible a ensuite provoqué\nson arrêt ou son dysfonctionnement.\n\n6. HISTORIQUE QDRANT\n\nConsulter Qdrant uniquement si l'outil est disponible.\n\nUtiliser les incidents précédents pour :\n- Identifier d'éventuelles récurrences.\n- Comparer des symptômes similaires.\n- Suggérer des vérifications pertinentes.\n\nNe jamais considérer qu'un incident actuel possède\nla même cause qu'un incident historique uniquement\nparce que leurs symptômes se ressemblent.\n\nSi Qdrant est indisponible, poursuivre normalement\nsans mentionner de données historiques inexistantes.\n\n==================================================\n2. HIÉRARCHISATION DES PREUVES\n==================================================\n\nHiérarchiser les éléments disponibles selon leur capacité\nà expliquer l'incident précis.\n\nPrivilégier :\n\n1. Les événements explicites directement liés au changement d'état\n   signalé par Centreon.\n\n2. Les logs contenant une commande, un signal, une erreur\n   ou une transition d'état identifiable.\n\n3. Les métriques directement associées à la ressource concernée.\n\n4. Les variations de métriques système sur l'hôte.\n\n5. Les corrélations temporelles indirectes.\n\n6. Les hypothèses générales sans preuve directe.\n\nCette hiérarchie ne signifie pas qu'un log est toujours exact\nou suffisant pour démontrer une cause racine.\n\nÉvaluer la fiabilité, la précision et la portée de chaque preuve.\n\nLorsqu'une commande explicite est présente dans les logs,\nelle doit être examinée avant de privilégier une hypothèse\nfondée uniquement sur des variations de CPU, RAM ou disque.\n\nNe jamais remplacer une preuve directe par un scénario\nplus complexe simplement parce que plusieurs métriques\nprésentent des variations.\n\n==================================================\n3. RÈGLES SPÉCIFIQUES AUX ARRÊTS\n==================================================\n\nPour une alerte concernant un service ou un conteneur arrêté :\n\n1. Rechercher une transition d'état explicite.\n\n2. Rechercher les commandes et événements tels que :\n   - systemctl stop\n   - docker stop\n   - docker kill\n   - splunk stop\n   - SIGTERM\n   - SIGINT\n   - SIGKILL\n   - Interrupt signal\n   - Shutting down\n   - Stopping\n   - Exited\n   - OOMKilled\n\n3. Distinguer :\n   - Arrêt demandé.\n   - Arrêt brutal.\n   - Crash applicatif.\n   - Arrêt par manque de mémoire.\n   - Redémarrage.\n   - Cause indéterminée.\n\n4. Un signal SIGTERM ou SIGINT peut être cohérent\n   avec une demande d'arrêt, mais ne suffit pas\n   à identifier son origine exacte.\n\n5. Un code de sortie 137 indique généralement\n   une terminaison par SIGKILL.\n   Il ne prouve pas à lui seul un OOM.\n\n6. Un message indiquant une commande explicite d'arrêt\n   constitue un élément important pour identifier\n   le mécanisme d'arrêt du service.\n\n7. Ne jamais affirmer qu'un arrêt est volontaire,\n   autorisé ou effectué par un administrateur\n   si ces informations ne sont pas démontrées.\n\n8. Distinguer la cause immédiate de l'arrêt\n   de la raison pour laquelle il a été demandé.\n\n9. Ne pas attribuer automatiquement un arrêt\n   à une activité CPU, mémoire, disque ou Ansible\n   observée quelques minutes auparavant.\n\n10. Si le statut exact du conteneur n'est pas disponible,\n    ne pas inventer son code de sortie,\n    son état Docker ou son statut de redémarrage.\n\n==================================================\n4. RÈGLES STRICTES DE FIABILITÉ\n==================================================\n\n1. Analyser exclusivement les données fournies\n   et les résultats des outils réellement disponibles.\n\n2. Ne jamais inventer :\n   - Une métrique.\n   - Un horodatage.\n   - Un processus.\n   - Un conteneur.\n   - Une commande.\n   - Un événement.\n   - Une relation de causalité.\n   - Un résultat de vérification.\n\n3. Distinguer systématiquement :\n   - Faits confirmés.\n   - Interprétations raisonnables.\n   - Hypothèses non confirmées.\n\n4. Une corrélation temporelle n'établit pas\n   une relation de causalité.\n\n5. Ne jamais attribuer une probabilité élevée à une cause\n   sans preuve directement pertinente.\n\n6. Ne jamais déduire le comportement d'un serveur\n   de son nom ou de son rôle supposé.\n\n7. Ne pas considérer deux mesures comme simultanées\n   sans vérifier leurs horodatages.\n\n8. Une mesure ancienne ne prouve pas l'état\n   d'une ressource au moment de l'alerte.\n\n9. Ne pas assimiler une métrique de consommation\n   à une métrique de disponibilité.\n\n10. Ne pas attribuer à un conteneur identifié\n    les métriques agrégées ou non étiquetées\n    de plusieurs conteneurs.\n\n11. Ne pas interpréter un avertissement logiciel\n    comme une erreur ayant causé l'incident\n    sans élément complémentaire.\n\n12. Si plusieurs causes restent plausibles\n    et qu'aucune preuve ne permet de les départager,\n    le signaler explicitement.\n\n13. Si aucune preuve ne permet d'identifier\n    le processus responsable, écrire :\n    \"Processus responsable non identifié avec les données disponibles.\"\n\n    Cette mention ne s'applique que lorsqu'il est pertinent\n    de rechercher un processus responsable.\n\n14. Si aucun log pertinent n'est disponible,\n    le signaler sans inventer d'explication.\n\n15. Si les données sont insuffisantes pour établir\n    une cause technique, écrire explicitement :\n    \"Cause technique non déterminée avec les données disponibles.\"\n\n16. Ne jamais présenter une hypothèse\n    comme une cause racine confirmée.\n\n17. Le niveau de confiance doit refléter\n    la solidité des preuves réellement disponibles,\n    et non la vraisemblance générale d'un scénario.\n\n18. Identifier les contradictions apparentes entre sources\n    et les expliquer uniquement si les données le permettent.\n\n19. Ne jamais inventer une récupération ou une résolution\n    de l'incident sans preuve d'un retour à l'état normal.\n\n20. Ne jamais déclencher de remédiation automatique.\n\n==================================================\n5. RECOMMANDATIONS\n==================================================\n\nProposer uniquement des vérifications et actions manuelles\nadaptées à la catégorie réelle de l'incident.\n\nExemples :\n- Vérifier l'état d'un service.\n- Vérifier l'état d'un conteneur.\n- Consulter les derniers journaux applicatifs.\n- Examiner les événements du moteur Docker.\n- Vérifier les ressources d'un processus.\n- Contrôler une configuration.\n- Comparer des métriques avant et après l'incident.\n\nNe pas proposer systématiquement des vérifications CPU,\nRAM ou disque lorsque l'incident concerne uniquement\nla disponibilité d'un service.\n\nNe pas recommander une action destructive ou un redémarrage\ncomme solution certaine si la cause n'est pas démontrée.\n\nAucune commande ne doit être exécutée automatiquement.\n\nAucun acquittement Centreon ou GLPI ne doit être effectué\nautomatiquement.\n\n==================================================\n6. FORMAT DE SORTIE\n==================================================\n\nRépondre exclusivement en français.\n\nProduire un diagnostic technique synthétique, précis\net professionnel, structuré en trois parties.\n\n1. CONSTAT & CORRÉLATION\n\nPrésenter :\n- L'hôte, le service, l'état et l'heure de l'alerte.\n- La catégorie de l'incident.\n- Les principales anomalies confirmées.\n- Les métriques pertinentes, avec valeurs et horodatages.\n- Les éventuelles limites de leur interprétation.\n\nNe pas surcharger cette partie de métriques\nsans lien direct avec l'incident.\n\n2. ANALYSE DES LOGS\n\nPrésenter :\n- Les événements pertinents dans l'ordre chronologique.\n- Les commandes, signaux ou messages explicites.\n- Leur relation temporelle avec l'alerte.\n- Les informations manquantes.\n\nDistinguer clairement :\n- Le contexte précédant l'incident.\n- L'événement directement lié à l'incident.\n- Les événements secondaires.\n\nNe pas attribuer une cause à une application ou à un outil\nsimplement parce que son nom apparaît dans les journaux.\n\n3. HYPOTHÈSES & VÉRIFICATIONS\n\nPrésenter :\n- La cause technique la plus probable, si identifiable.\n- Les preuves qui soutiennent cette conclusion.\n- Les hypothèses alternatives réellement pertinentes.\n- Le niveau de confiance.\n- Les limites du diagnostic.\n- Les vérifications manuelles recommandées.\n\nSi une cause immédiate est identifiable\nmais que son origine exacte reste inconnue,\ndistinguer explicitement les deux.\n\nNe jamais inventer une cause pour compléter cette partie.\n\n==================================================\n7. CONTRÔLE FINAL AVANT RÉPONSE\n==================================================\n\nAvant de produire le diagnostic, vérifier mentalement :\n\n- Ai-je correctement identifié le type d'alerte ?\n- Ai-je respecté les horodatages ?\n- Ai-je distingué les mesures instantanées des moyennes ?\n- Ai-je attribué chaque métrique à la bonne ressource ?\n- Ai-je identifié les événements directement liés à l'incident ?\n- Ai-je évité de confondre chronologie et causalité ?\n- Ai-je distingué cause immédiate et cause racine ?\n- Ai-je signalé les données manquantes ?\n- Mon niveau de confiance est-il justifié par les preuves ?\n- Mes recommandations sont-elles uniquement manuelles ?\n\nSi une affirmation ne peut pas être justifiée\npar les données disponibles, la reformuler\ncomme hypothèse ou la supprimer.\n\nAucune remédiation automatique."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        1424,
+        -304
+      ],
+      "id": "0e47ea94-e252-409e-a863-d5233f3c2c44",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "14a17986-af52-42f5-b54d-4f2623538317",
+              "leftValue": "={{ $('Webhook').item.json.body.notification_type }}",
+              "rightValue": "PROBLEM",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -496,
+        -32
+      ],
+      "id": "d8395791-1292-4be9-bbe5-473d26838d81",
+      "name": "PROBLEM OR RESOLVED"
+    },
+    {
+      "parameters": {
+        "url": "https://glpi.example.com/apirest.php/initSession",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "App-Token",
+              "value": "REPLACE_WITH_GLPI_APP_TOKEN"
+            },
+            {
+              "name": "Authorization",
+              "value": "user_token REPLACE_WITH_GLPI_USER_TOKEN"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "072d18a8-28d3-4cd8-9b67-ca6c4541e646",
+      "name": "Get Token GLPI1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        -144,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://glpi.example.com/apirest.php/Ticket/{{ $('Recherche ID Ticket').item.json.data[0]['2'] }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "App-Token",
+              "value": "REPLACE_WITH_GLPI_APP_TOKEN"
+            },
+            {
+              "name": "Authorization",
+              "value": "user_token REPLACE_WITH_GLPI_USER_TOKEN"
+            },
+            {
+              "name": "Session-Token",
+              "value": "={{ $('Get Token GLPI1').item.json.session_token }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"input\": {\n    \"status\": 6\n  }\n}",
+        "options": {}
+      },
+      "id": "3500bc8e-b1bc-4c7c-95d4-ac5bf8f9b934",
+      "name": "CLOSE de ticket",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        1920,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://glpi.example.com/apirest.php/search/Ticket/",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "criteria[0][field]",
+              "value": "1"
+            },
+            {
+              "name": "criteria[0][searchtype]",
+              "value": "contains"
+            },
+            {
+              "name": "criteria[0][value]",
+              "value": "=[ID:{{ $('Webhook').item.json.body.event_id }}]"
+            },
+            {
+              "name": "criteria[1][link]",
+              "value": "AND"
+            },
+            {
+              "name": "criteria[1][field]",
+              "value": "12"
+            },
+            {
+              "name": "criteria[1][searchtype]",
+              "value": "equals"
+            },
+            {
+              "name": "criteria[1][value]",
+              "value": "1"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "App-Token",
+              "value": "REPLACE_WITH_GLPI_APP_TOKEN"
+            },
+            {
+              "name": "Authorization",
+              "value": "user_token REPLACE_WITH_GLPI_USER_TOKEN"
+            },
+            {
+              "name": "Session-Token",
+              "value": "={{ $json.session_token }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "93a54f34-98f3-456b-a89d-9ba5fccf9398",
+      "name": "Recherche ID Ticket",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        80,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://glpi.example.com/apirest.php/ITILSolution/",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "App-Token",
+              "value": "REPLACE_WITH_GLPI_APP_TOKEN"
+            },
+            {
+              "name": "Authorization",
+              "value": "user_token REPLACE_WITH_GLPI_USER_TOKEN"
+            },
+            {
+              "name": "Session-Token",
+              "value": "={{ $('Get Token GLPI1').item.json.session_token }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"input\": {\n    \"items_id\": \"{{ $('Recherche ID Ticket').item.json.data[0]['2'] }}\",\n    \"itemtype\": \"Ticket\",\n    \"content\": \"✅ RÉSOLU : Alerte terminée. Clôture automatique.\",\n    \"solutiontypes_id\": 1\n  }\n}",
+        "options": {}
+      },
+      "id": "46eb253b-ffbc-4848-a852-ad358b92d471",
+      "name": "SOLUTION de ticket",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        528,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "88532857-d9ce-49e5-a2af-a5fbd41cc72f",
+              "leftValue": "={{ $('Recherche ID Ticket').item.json.totalcount }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        304,
+        384
+      ],
+      "id": "78cc5f26-5216-437b-9b55-ff0a32ad4be7",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "content": "## GLPI\nClôture Automatique du ticket & index Qdrant\n",
+        "height": 336,
+        "width": 2352
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -208,
+        288
+      ],
+      "typeVersion": 1,
+      "id": "feb312d2-e2b6-4b72-a1c7-289c4c8bd01b",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "##  GLPI\nRécupération Token",
+        "height": 336,
+        "width": 448,
+        "color": 3
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -336,
+        -416
+      ],
+      "typeVersion": 1,
+      "id": "dd0ab68f-a13f-4503-af14-4eaea26642f3",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "content": "## Loki & Centreon\nRécupération des logs , métrique et Transformation",
+        "height": 336,
+        "width": 768,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        128,
+        -416
+      ],
+      "typeVersion": 1,
+      "id": "8d3e210b-7935-41ea-bbdf-d930ac6b7762",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "content": "## Analyse IA\nCorrélation log, métrique Centreon ",
+        "height": 480,
+        "width": 400,
+        "color": 2
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        1328,
+        -416
+      ],
+      "typeVersion": 1,
+      "id": "24fdfb01-77fd-4d23-ace5-0ce4e72b7414",
+      "name": "Sticky Note3"
+    },
+    {
+      "parameters": {
+        "content": "## GLPI\nCréation Automatique du Ticket & acquittement de l'évènement sur centreon + Commentaire Numéro de ticket",
+        "height": 336,
+        "width": 1232,
+        "color": 6
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        1744,
+        -416
+      ],
+      "typeVersion": 1,
+      "id": "fa00627b-6aae-401f-91f3-208c14548162",
+      "name": "Sticky Note4"
+    },
+    {
+      "parameters": {
+        "url": "http://prometheus.example.internal:9090/api/v1/query",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "query",
+              "value": "=label_replace(\n  100 - (\n    avg by (hostname) (\n      rate(node_cpu_seconds_total{mode=\"idle\",hostname=\"{{ $('Webhook').first().json.body.host }}\"}[5m])\n    ) * 100\n  ),\n  \"metric\", \"cpu_percent\", \"\", \"\"\n)\nor\nlabel_replace(\n  (\n    1 -\n    node_memory_MemAvailable_bytes{hostname=\"{{ $('Webhook').first().json.body.host }}\"}\n    /\n    node_memory_MemTotal_bytes{hostname=\"{{ $('Webhook').first().json.body.host }}\"}\n  ) * 100,\n  \"metric\", \"ram_percent\", \"\", \"\"\n)\nor\nlabel_replace(\n  (\n    1 -\n    node_memory_SwapFree_bytes{hostname=\"{{ $('Webhook').first().json.body.host }}\"}\n    /\n    node_memory_SwapTotal_bytes{hostname=\"{{ $('Webhook').first().json.body.host }}\"}\n  ) * 100,\n  \"metric\", \"swap_percent\", \"\", \"\"\n)\nor\nlabel_replace(\n  100 - (\n    node_filesystem_avail_bytes{hostname=\"{{ $('Webhook').first().json.body.host }}\",mountpoint=\"/\"}\n    /\n    node_filesystem_size_bytes{hostname=\"{{ $('Webhook').first().json.body.host }}\",mountpoint=\"/\"}\n    * 100\n  ),\n  \"metric\", \"disk_percent\", \"\", \"\"\n)\nor\nlabel_replace(\n  node_load1{hostname=\"{{ $('Webhook').first().json.body.host }}\"},\n  \"metric\", \"load1\", \"\", \"\"\n)\nor\nlabel_replace(\n  node_load5{hostname=\"{{ $('Webhook').first().json.body.host }}\"},\n  \"metric\", \"load5\", \"\", \"\"\n)\nor\nlabel_replace(\n  node_procs_running{hostname=\"{{ $('Webhook').first().json.body.host }}\"},\n  \"metric\", \"procs_running\", \"\", \"\"\n)\nor\nlabel_replace(\n  node_netstat_Tcp_CurrEstab{hostname=\"{{ $('Webhook').first().json.body.host }}\"},\n  \"metric\", \"tcp_connections\", \"\", \"\"\n)\nor\nlabel_replace(\n  rate(\n    node_network_receive_bytes_total{hostname=\"{{ $('Webhook').first().json.body.host }}\",device=\"eth0\"}[5m]\n  ),\n  \"metric\", \"net_rx_bytes_per_sec\", \"\", \"\"\n)\nor\nlabel_replace(\n  rate(\n    node_network_transmit_bytes_total{hostname=\"{{ $('Webhook').first().json.body.host }}\",device=\"eth0\"}[5m]\n  ),\n  \"metric\", \"net_tx_bytes_per_sec\", \"\", \"\"\n)\nor\nlabel_replace(\n  topk(\n    3,\n    sum by (name) (\n      rate(\n        container_cpu_usage_seconds_total{\n          name=~\"{{ $('Identification instance').first().json.instance_identifiee ? $('Identification instance').first().json.instance.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&') : '.+' }}\",\n          hostname=\"{{ $('Webhook').first().json.body.host }}\"\n        }[5m]\n      )\n    ) * 100\n  ),\n  \"metric\", \"top_container_cpu_percent\", \"\", \"\"\n)\nor\nlabel_replace(\n  topk(\n    3,\n    sum by (name) (\n      container_memory_working_set_bytes{\n        name=~\"{{ $('Identification instance').first().json.instance_identifiee ? $('Identification instance').first().json.instance.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&') : '.+' }}\",\n        hostname=\"{{ $('Webhook').first().json.body.host }}\"\n      }\n    ) / 1024 / 1024\n  ),\n  \"metric\", \"top_container_ram_mb\", \"\", \"\"\n)\nor\nlabel_replace(\n  topk(\n    5,\n    rate(\n      namedprocess_namegroup_cpu_seconds_total{\n        hostname=\"{{ $('Webhook').first().json.body.host }}\",\n        mode=\"user\"\n      }[2m]\n    )\n  ) * 100,\n  \"metric\", \"top_process_cpu_percent\", \"\", \"\"\n)\nor\nlabel_replace(\n  topk(\n    5,\n    namedprocess_namegroup_memory_bytes{\n      hostname=\"{{ $('Webhook').first().json.body.host }}\",\n      mode=\"resident\"\n    }\n  ),\n  \"metric\", \"top_process_ram_bytes\", \"\", \"\"\n)"
+            },
+            {
+              "name": "time",
+              "value": "={{ new Date($('Webhook').first().json.body.timestamp).getTime() / 1000 }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        976,
+        -304
+      ],
+      "id": "f4687120-d260-48d1-8d7a-cbab2970ddff",
+      "name": "Prometheus Get Metrics"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// TRANSFORMATION PROMETHEUS\n// Métriques système, conteneurs et processus\n// Synchronisées avec l'incident Centreon\n// ============================================================\n\nconst results = $input.first().json.data?.result || [];\n\nif (results.length === 0) {\n  return [{\n    json: {\n      nombre_metriques: 0,\n      prometheus_formate: \"Aucune métrique système Prometheus disponible.\"\n    }\n  }];\n}\n\n// Timestamp d'évaluation retourné par Prometheus\nconst timestamp = Number(results[0].value?.[0]);\n\nconst dateEvaluation = Number.isFinite(timestamp)\n  ? new Date(timestamp * 1000).toISOString()\n  : \"Non disponible\";\n\n// Informations générales\nlet promMetrics = [\n  \"=== MÉTRIQUES PROMETHEUS ===\",\n  `Hôte : ${$('Webhook').first().json.body.host}`,\n  `Date d'évaluation : ${dateEvaluation}`,\n  \"Source : Prometheus\",\n  \"\",\n  \"IMPORTANT :\",\n  \"- cpu_percent représente une utilisation CPU moyenne sur 5 minutes.\",\n  \"- top_process_cpu_percent représente une consommation CPU sur 2 minutes.\",\n  \"- Pour les processus, 100 % correspond approximativement à un cœur CPU.\",\n  \"- Les autres métriques sont évaluées à l'heure indiquée ci-dessus.\",\n  \"- Le timestamp d'évaluation ne garantit pas que chaque échantillon brut a été collecté à cet instant précis.\",\n  \"\",\n  \"MESURES :\"\n].join(\"\\n\") + \"\\n\";\n\n// ------------------------------------------------------------\n// Transformation des métriques\n// ------------------------------------------------------------\n\nfor (const item of results) {\n\n  const metricName =\n    item.metric?.metric ||\n    item.metric?.__name__ ||\n    \"Métrique inconnue\";\n\n  const containerLabel =\n    item.metric?.name ||\n    item.metric?.container ||\n    item.metric?.container_name ||\n    item.metric?.id;\n\n  const containerName = containerLabel\n    ? ` [Conteneur: ${containerLabel}]`\n    : \"\";\n\n  const processLabel = item.metric?.groupname;\n\n  const processName = processLabel\n    ? ` [Processus: ${processLabel}]`\n    : \"\";\n\n  const metricValue = Number(item.value?.[1]);\n\n  if (!Number.isFinite(metricValue)) {\n    continue;\n  }\n\n  let unit = \"\";\n  let displayValue = metricValue.toFixed(2);\n\n  if (metricName.includes(\"percent\")) {\n    unit = \"%\";\n\n  } else if (metricName.includes(\"bytes_per_sec\")) {\n    unit = \" octets/s\";\n\n  } else if (metricName.includes(\"ram_mb\")) {\n    unit = \" Mo\";\n\n  } else if (metricName === \"top_process_ram_bytes\") {\n    displayValue = (metricValue / 1024 / 1024).toFixed(2);\n    unit = \" Mo\";\n  }\n\n  promMetrics +=\n    `- ${metricName}${containerName}${processName} : ${displayValue}${unit}\\n`;\n}\n\n// ------------------------------------------------------------\n// Résultat n8n\n// ------------------------------------------------------------\n\nreturn [{\n  json: {\n    source: \"Prometheus\",\n    timestamp_evaluation: dateEvaluation,\n    nombre_metriques: results.length,\n    prometheus_formate: promMetrics\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1168,
+        -304
+      ],
+      "id": "e7d50aae-9453-4df8-8487-b4ae5ae58be6",
+      "name": "Transformation Prometheus"
+    },
+    {
+      "parameters": {
+        "content": "## Prometheus\nRécupération des métriques et transformation",
+        "height": 336,
+        "width": 400,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        912,
+        -416
+      ],
+      "typeVersion": 1,
+      "id": "abbabcbe-bcc2-4f78-8cc5-69d696953d91",
+      "name": "Sticky Note5"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "google/gemma-4-26b-a4b",
+          "mode": "list",
+          "cachedResultName": "google/gemma-4-26b-a4b"
+        },
+        "responsesApiEnabled": false,
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        1424,
+        -112
+      ],
+      "id": "685fa8ef-4a69-4e4a-83e9-3e75a475ee64",
+      "name": "OpenAI Chat Model"
+    },
+    {
+      "parameters": {
+        "url": "=https://glpi.example.com/apirest.php/Ticket/{{ $('Recherche ID Ticket').item.json.data[0]['2'] }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "App-Token",
+              "value": "REPLACE_WITH_GLPI_APP_TOKEN"
+            },
+            {
+              "name": "Authorization",
+              "value": "user_token REPLACE_WITH_GLPI_USER_TOKEN"
+            },
+            {
+              "name": "Session-Token",
+              "value": "={{ $('Get Token GLPI1').item.json.session_token }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "fca04fe7-c831-4c62-882f-9029ffbb7418",
+      "name": "GET Ticket complet",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        752,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://llm.example.internal:1234/v1/embeddings",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ model: \"nomic-embed-text\", input: $('Code Validation').item.json.text }) }}",
+        "options": {
+          "response": {
+            "response": {}
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1232,
+        384
+      ],
+      "id": "d868b66d-6afc-4002-9425-94cc92cf8c32",
+      "name": "Ollama Embeddings"
+    },
+    {
+      "parameters": {
+        "jsCode": "const embedding = $json.data[0].embedding;\nconst data = $('Code Validation').item.json;\n\nreturn {\n  json: {\n    points: [{\n      id: data.ticket_id,\n      vector: embedding,  // tableau direct, plus de { dense: ... }\n      payload: {\n        content: data.text,\n        titre: data.titre,\n        serveur: data.serveur,\n        solution: data.text,\n        date: data.date,\n        duree_minutes: data.duree_minutes,\n        ticket_id: data.ticket_id\n      }\n    }]\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1456,
+        384
+      ],
+      "id": "79f44793-dae1-4308-9f5b-de03ee1c1841",
+      "name": "Format Qdrant"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Gestion tableau ou objet direct\nconst raw = $input.first().json;\nconst ticket = Array.isArray(raw) ? raw[0] : raw;\n\nconst dureeMinutes = Math.round((ticket.solve_delay_stat || 0) / 60);\nconst contenu = ticket.content?.replace(/<[^>]*>/g, '').trim() || \"\";\nconst updater = ticket.users_id_lastupdater || 0;\n\nif (updater === 0) {\n  return [{ json: { eligible: false, raison: \"Aucun utilisateur impliqué\" } }];\n}\n\nif (dureeMinutes < 2) {\n  return [{ json: { eligible: false, raison: `Trop rapide: ${dureeMinutes} min` } }];\n}\n\nif (contenu.length < 100) {\n  return [{ json: { eligible: false, raison: \"Contenu trop court\" } }];\n}\n\n// Extraction du serveur depuis le contenu\nconst serveurMatch = contenu.match(/Serveur\\s*:\\s*(\\S+)/);\nconst serveur = serveurMatch ? serveurMatch[1] : $('Webhook').item.json.body.host || \"inconnu\";\n\n// Texte à vectoriser\nconst texte = `\nTitre: ${ticket.name}\nServeur: ${serveur}\nDurée résolution: ${dureeMinutes} minutes\nDiagnostic et solution:\n${contenu}\n`.trim();\n\nreturn [{\n  json: {\n    eligible: true,\n    text: texte,\n    ticket_id: ticket.id,\n    titre: ticket.name,\n    serveur: serveur,\n    duree_minutes: dureeMinutes,\n    date: ticket.closedate\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        992,
+        384
+      ],
+      "id": "4b7dafa3-b79b-428c-b8d9-fb58f0afa69c",
+      "name": "Code Validation"
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "http://qdrant.example.internal:6333/collections/glpi_incidents/points",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1680,
+        384
+      ],
+      "id": "c8f15b50-6cf7-4aef-9a4a-a47722ef73ad",
+      "name": "Qdrant insert hybride"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://influxdb.example.internal:8086/api/v2/query?org=monitoring",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/vnd.flux"
+            },
+            {
+              "name": "Accept",
+              "value": "application/csv"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/vnd.flux",
+        "body": "={{\n(() => {\n  const alerte = $('Webhook').first().json.body;\n  const identification = $('Identification instance').first().json;\n\n  const host = JSON.stringify(alerte.host);\n  const instance = identification.instance;\n  const instanceIdentifiee = identification.instance_identifiee === true;\n\n  const end = new Date(alerte.timestamp);\n\n  if (Number.isNaN(end.getTime())) {\n    throw new Error(\"Timestamp Centreon invalide\");\n  }\n\n  const start = new Date(end.getTime() - 30 * 60 * 1000);\n\n  const filtreInstance = instanceIdentifiee\n    ? `|> filter(fn: (r) =>\n        not exists r[\"metric.instance\"] or\n        r[\"metric.instance\"] == ${JSON.stringify(instance)}\n      )`\n    : \"\";\n\n  return `\nfrom(bucket: \"centreon\")\n  |> range(\n    start: time(v: \"${start.toISOString()}\"),\n    stop: time(v: \"${end.toISOString()}\")\n  )\n  |> filter(fn: (r) => r[\"host.name\"] == ${host})\n  |> filter(fn: (r) => r[\"_field\"] == \"value\")\n  ${filtreInstance}\n  |> group()\n  |> sort(columns: [\"_time\"])\n`;\n})()\n}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        576,
+        -304
+      ],
+      "id": "d20cb81a-4e38-4ee2-b816-7a1163b3d910",
+      "name": "InfluxDB Get Metric"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// TRANSFORMATION CENTREON / INFLUXDB — VERSION GÉNÉRIQUE V3\n// n8n — Run Once for All Items\n//\n// Objectifs :\n// - Conserver toutes les dimensions InfluxDB\n// - Séparer correctement les séries temporelles\n// - Préserver la structure \"services\" existante\n// - Résumer toutes les séries avant d'ajouter des détails\n// - Limiter le texte envoyé au LLM\n// - Ne jamais inventer l'identité d'une ressource\n// ============================================================\n\n\n// ============================================================\n// 1. CONFIGURATION\n// ============================================================\n\nconst CONFIG = {\n  decimales: 3,\n\n  // Budget du seul champ centreon_formate.\n  // Ce n'est PAS un nombre exact de tokens.\n  maxCaracteresLLM: 16000,\n\n  // Points chronologiques ajoutés aux séries détaillées.\n  pointsIntermediaires: 4\n};\n\n\n// ============================================================\n// 2. DONNÉES D'ENTRÉE\n// ============================================================\n\nconst csv = $input.first().json.data;\n\nif (!csv || typeof csv !== \"string\") {\n  throw new Error(\"Aucune donnée CSV reçue depuis InfluxDB\");\n}\n\nconst alerte = $(\"Webhook\").first().json.body;\n\nfunction arrondir(nombre) {\n  return Number(nombre.toFixed(CONFIG.decimales));\n}\n\n\n// ============================================================\n// 3. PARSEUR CSV\n// ============================================================\n\nfunction parseCSV(texte) {\n  const lignes = [];\n\n  let ligne = [];\n  let champ = \"\";\n  let guillemets = false;\n\n  for (let i = 0; i < texte.length; i++) {\n    const c = texte[i];\n\n    if (c === '\"') {\n      if (guillemets && texte[i + 1] === '\"') {\n        champ += '\"';\n        i++;\n      } else {\n        guillemets = !guillemets;\n      }\n    } else if (c === \",\" && !guillemets) {\n      ligne.push(champ);\n      champ = \"\";\n    } else if (\n      (c === \"\\n\" || c === \"\\r\") &&\n      !guillemets\n    ) {\n      if (c === \"\\r\" && texte[i + 1] === \"\\n\") {\n        i++;\n      }\n\n      ligne.push(champ);\n\n      if (ligne.some(v => v !== \"\")) {\n        lignes.push(ligne);\n      }\n\n      ligne = [];\n      champ = \"\";\n    } else {\n      champ += c;\n    }\n  }\n\n  ligne.push(champ);\n\n  if (ligne.some(v => v !== \"\")) {\n    lignes.push(ligne);\n  }\n\n  return lignes;\n}\n\nconst lignes = parseCSV(csv);\n\n\n// ============================================================\n// 4. EXTRACTION ET IDENTIFICATION DES SÉRIES\n// ============================================================\n\nconst services = {};\nconst series = new Map();\n\nlet totalMesures = 0;\nlet mesuresIgnorees = 0;\n\nlet headers = null;\n\n// Colonnes techniques Flux, non utilisées\n// comme dimensions de ressource.\nconst colonnesTechniques = new Set([\n  \"\",\n  \"result\",\n  \"table\",\n  \"_start\",\n  \"_stop\",\n  \"_time\",\n  \"_value\",\n  \"_measurement\",\n  \"_field\",\n  \"metric.unit\",\n  \"service.name\"\n]);\n\nfor (const ligne of lignes) {\n  const premiereColonne = String(ligne[0] || \"\");\n\n  // Annotations Flux\n  if (premiereColonne.startsWith(\"#\")) {\n    continue;\n  }\n\n  // En-tête CSV, éventuellement répété\n  if (\n    ligne.includes(\"_time\") &&\n    ligne.includes(\"_value\")\n  ) {\n    headers = ligne;\n    continue;\n  }\n\n  if (!headers) {\n    continue;\n  }\n\n  const row = {};\n\n  headers.forEach((header, index) => {\n    row[header] = ligne[index] ?? \"\";\n  });\n\n  const service = row[\"service.name\"] || \"Host\";\n\n  const measurement = row[\"_measurement\"] || \"\";\n  const field = row[\"_field\"] || \"\";\n\n  const metric =\n    measurement && field && field !== \"value\"\n      ? `${measurement}.${field}`\n      : measurement || field;\n\n  const valeurBrute = row[\"_value\"];\n  const timestamp = row[\"_time\"];\n\n  if (\n    !metric ||\n    !timestamp ||\n    valeurBrute === \"\" ||\n    !Number.isFinite(Number(valeurBrute))\n  ) {\n    mesuresIgnorees++;\n    continue;\n  }\n\n  const valeur = arrondir(Number(valeurBrute));\n  const unite = row[\"metric.unit\"] || \"\";\n\n  // Découverte automatique des dimensions\n  const dimensions = {};\n\n  for (const [cle, valeurDimension] of Object.entries(row)) {\n    if (\n      !colonnesTechniques.has(cle) &&\n      valeurDimension !== \"\"\n    ) {\n      dimensions[cle] = valeurDimension;\n    }\n  }\n\n  const dimensionsTriees = Object.fromEntries(\n    Object.entries(dimensions).sort(\n      ([a], [b]) => a.localeCompare(b)\n    )\n  );\n\n  const cleSerie = JSON.stringify({\n    service,\n    metric,\n    dimensions: dimensionsTriees\n  });\n\n  const mesure = {\n    t: timestamp,\n    v: valeur\n  };\n\n  // ----------------------------------------------------------\n  // Structure historique compatible avec le code précédent\n  // ----------------------------------------------------------\n\n  if (!services[service]) {\n    services[service] = {};\n  }\n\n  if (!services[service][metric]) {\n    services[service][metric] = {\n      unite,\n      mesures: []\n    };\n  }\n\n  services[service][metric].mesures.push(mesure);\n\n  // ----------------------------------------------------------\n  // Séries distinctes par dimensions\n  // ----------------------------------------------------------\n\n  if (!series.has(cleSerie)) {\n    series.set(cleSerie, {\n      service,\n      metric,\n      unite,\n      dimensions: dimensionsTriees,\n      mesures: []\n    });\n  }\n\n  series.get(cleSerie).mesures.push(mesure);\n\n  totalMesures++;\n}\n\n\n// ============================================================\n// 5. TRI CHRONOLOGIQUE\n// ============================================================\n\nfor (const service of Object.values(services)) {\n  for (const metric of Object.values(service)) {\n    metric.mesures.sort(\n      (a, b) => a.t.localeCompare(b.t)\n    );\n  }\n}\n\n\n// ============================================================\n// 6. CALCUL DES RÉSUMÉS\n// ============================================================\n\nfunction pointsRepresentatifs(mesures, nombre) {\n  if (mesures.length <= 2 || nombre <= 0) {\n    return [];\n  }\n\n  const indices = new Set();\n\n  for (let i = 1; i <= nombre; i++) {\n    const index = Math.round(\n      (i * (mesures.length - 1)) / (nombre + 1)\n    );\n\n    if (index > 0 && index < mesures.length - 1) {\n      indices.add(index);\n    }\n  }\n\n  return [...indices]\n    .sort((a, b) => a - b)\n    .map(index => mesures[index]);\n}\n\nconst resumes = [];\n\nfor (const serie of series.values()) {\n  const mesures = serie.mesures.sort(\n    (a, b) => a.t.localeCompare(b.t)\n  );\n\n  if (!mesures.length) {\n    continue;\n  }\n\n  const debut = mesures[0];\n  const fin = mesures[mesures.length - 1];\n\n  let minimum = mesures[0];\n  let maximum = mesures[0];\n  let somme = 0;\n\n  const timestamps = new Set();\n  let horodatagesDupliques = false;\n\n  for (const mesure of mesures) {\n    somme += mesure.v;\n\n    if (mesure.v < minimum.v) {\n      minimum = mesure;\n    }\n\n    if (mesure.v > maximum.v) {\n      maximum = mesure;\n    }\n\n    if (timestamps.has(mesure.t)) {\n      horodatagesDupliques = true;\n    }\n\n    timestamps.add(mesure.t);\n  }\n\n  resumes.push({\n    service: serie.service,\n    metrique: serie.metric,\n    unite: serie.unite,\n    dimensions: serie.dimensions,\n\n    nombre_points: mesures.length,\n\n    debut,\n    fin,\n    minimum,\n    maximum,\n\n    moyenne: arrondir(somme / mesures.length),\n    variation: arrondir(fin.v - debut.v),\n\n    points_intermediaires: pointsRepresentatifs(\n      mesures,\n      CONFIG.pointsIntermediaires\n    ),\n\n    horodatages_dupliques: horodatagesDupliques\n  });\n}\n\n\n// ============================================================\n// 7. PERTINENCE GÉNÉRIQUE PAR RAPPORT À L'ALERTE\n// ============================================================\n\n// On utilise seulement les champs présents dans le webhook.\n// Aucun nom de conteneur ou de service n'est codé en dur.\n\nconst serviceAlerte = String(\n  alerte.service || \"\"\n).toLowerCase();\n\nconst valeursAlerte = [\n  alerte.service,\n  alerte.output,\n  alerte.host\n]\n  .filter(v => typeof v === \"string\" && v.trim())\n  .map(v => v.toLowerCase());\n\nfunction scorePertinence(serie) {\n  let score = 0;\n\n  const service = serie.service.toLowerCase();\n  const metrique = serie.metrique.toLowerCase();\n\n  // Correspondance exacte avec le service en alerte\n  if (serviceAlerte && service === serviceAlerte) {\n    score += 100;\n  }\n\n  // Correspondance partielle avec son nom\n  if (\n    serviceAlerte &&\n    (\n      service.includes(serviceAlerte) ||\n      serviceAlerte.includes(service)\n    )\n  ) {\n    score += 20;\n  }\n\n  // Les valeurs des dimensions peuvent correspondre\n  // à des ressources mentionnées dans l'alerte.\n  const valeursDimensions = Object.values(\n    serie.dimensions\n  ).map(v => String(v).toLowerCase());\n\n  for (const dimension of valeursDimensions) {\n    if (\n      dimension.length >= 3 &&\n      valeursAlerte.some(texte =>\n        texte === dimension ||\n        texte.includes(dimension)\n      )\n    ) {\n      score += 40;\n    }\n  }\n\n  // Conserver le score sans interprétation métier.\n  return score;\n}\n\nresumes.forEach(serie => {\n  serie.score_pertinence = scorePertinence(serie);\n});\n\n// Ordre stable et indépendant du CSV\nresumes.sort((a, b) => {\n  const score = b.score_pertinence - a.score_pertinence;\n\n  if (score !== 0) {\n    return score;\n  }\n\n  const identiteA = JSON.stringify({\n    service: a.service,\n    metrique: a.metrique,\n    dimensions: a.dimensions\n  });\n\n  const identiteB = JSON.stringify({\n    service: b.service,\n    metrique: b.metrique,\n    dimensions: b.dimensions\n  });\n\n  return identiteA.localeCompare(identiteB);\n});\n\n\n// ============================================================\n// 8. FORMATAGE\n// ============================================================\n\nfunction pointCourt(point) {\n  return `${point.v}@${point.t}`;\n}\n\nfunction identiteSerie(serie) {\n  const dimensions = Object.entries(serie.dimensions)\n    .map(([cle, valeur]) => `${cle}=${valeur}`)\n    .join(\",\");\n\n  return (\n    `${serie.service}/${serie.metrique}` +\n    (dimensions ? ` [${dimensions}]` : \"\")\n  );\n}\n\n// Version minimale : une ligne par série.\n// Toutes les séries doivent passer par cette étape.\nfunction formatMinimal(serie) {\n  const unite = serie.unite\n    ? ` ${serie.unite}`\n    : \"\";\n\n  let texte =\n    `${identiteSerie(serie)} | ` +\n    `n=${serie.nombre_points} | ` +\n    `dernier=${pointCourt(serie.fin)}${unite} | ` +\n    `min=${pointCourt(serie.minimum)} | ` +\n    `max=${pointCourt(serie.maximum)}`;\n\n  if (serie.horodatages_dupliques) {\n    texte += \" | HORODATAGES_DUPLIQUES\";\n  }\n\n  return texte;\n}\n\n// Complément de détail pour certaines séries.\nfunction formatDetail(serie) {\n  const lignes = [\n    `DETAIL ${identiteSerie(serie)}`,\n    `  Début: ${pointCourt(serie.debut)}`,\n    `  Fin: ${pointCourt(serie.fin)}`,\n    `  Moyenne des points: ${serie.moyenne}`,\n    `  Variation début-fin: ${serie.variation}`\n  ];\n\n  if (serie.points_intermediaires.length) {\n    lignes.push(\n      \"  Chronologie: \" +\n      serie.points_intermediaires\n        .map(pointCourt)\n        .join(\" ; \")\n    );\n  }\n\n  return lignes.join(\"\\n\");\n}\n\n\n// ============================================================\n// 9. CONSTRUCTION DU RÉSUMÉ LLM\n// ============================================================\n\nconst entete = [\n  \"=== CENTREON / INFLUXDB : HISTORIQUE 30 MIN ===\",\n  `Hôte: ${alerte.host || \"Inconnu\"}`,\n  `Service en alerte: ${alerte.service || \"Inconnu\"}`,\n  `État: ${alerte.status || \"Inconnu\"}`,\n  `Notification: ${alerte.timestamp || \"Inconnue\"}`,\n  `Mesures: ${totalMesures}`,\n  `Séries distinctes: ${resumes.length}`,\n  \"\",\n  \"LECTURE:\",\n  \"- Toutes les statistiques portent sur les points collectés.\",\n  \"- Les valeurs min/max ne prouvent pas une panne.\",\n  \"- Une absence de mesure ne prouve pas un état arrêté.\",\n  \"- Ne pas attribuer une série à une autre instance.\",\n  \"- Les données Centreon ne suffisent pas à déterminer seules une cause.\",\n  \"\"\n].join(\"\\n\");\n\n// ------------------------------------------------------------\n// Niveau 1 : résumé minimal de toutes les séries\n// ------------------------------------------------------------\n\nconst blocsMinimaux = resumes.map(formatMinimal);\n\nconst texteMinimal = [\n  entete,\n  \"=== INVENTAIRE DES SÉRIES ===\",\n  ...blocsMinimaux\n].join(\"\\n\");\n\nlet centreonFormate = texteMinimal;\n\nlet seriesOmisses = 0;\nlet detailsAjoutes = 0;\n\n// Si même la version minimale dépasse le budget,\n// on transmet autant de séries que possible, en\n// signalant explicitement le nombre manquant.\nif (\n  texteMinimal.length > CONFIG.maxCaracteresLLM\n) {\n  centreonFormate =\n    entete +\n    \"\\n=== INVENTAIRE PARTIEL DES SÉRIES ===\\n\";\n\n  let incluses = 0;\n\n  for (const bloc of blocsMinimaux) {\n    const ajout = bloc + \"\\n\";\n\n    if (\n      centreonFormate.length + ajout.length >\n      CONFIG.maxCaracteresLLM - 150\n    ) {\n      break;\n    }\n\n    centreonFormate += ajout;\n    incluses++;\n  }\n\n  seriesOmisses = resumes.length - incluses;\n\n  centreonFormate +=\n    `\\nATTENTION: ${seriesOmisses} séries omises ` +\n    \"faute de budget de contexte.\\n\";\n\n} else {\n\n  // ----------------------------------------------------------\n  // Niveau 2 : détails supplémentaires\n  // ----------------------------------------------------------\n\n  const details = [];\n\n  let longueur = centreonFormate.length;\n\n  for (const serie of resumes) {\n    const bloc = \"\\n\" + formatDetail(serie);\n\n    if (\n      longueur + bloc.length >\n      CONFIG.maxCaracteresLLM - 100\n    ) {\n      continue;\n    }\n\n    details.push(bloc);\n    longueur += bloc.length;\n    detailsAjoutes++;\n  }\n\n  if (details.length) {\n    centreonFormate +=\n      \"\\n\\n=== DÉTAILS CHRONOLOGIQUES ===\" +\n      details.join(\"\\n\");\n  }\n}\n\n\n// ============================================================\n// 10. RÉSULTAT FINAL\n// ============================================================\n\nreturn [{\n  json: {\n    source: \"Centreon / InfluxDB\",\n\n    hote: alerte.host,\n    service_alerte: alerte.service,\n    etat: alerte.status,\n    date_alerte: alerte.timestamp,\n\n    periode_analyse: \"30 minutes avant notification\",\n\n    nombre_mesures: totalMesures,\n    nombre_series: resumes.length,\n    mesures_ignorees: mesuresIgnorees,\n\n    // Suivi de la compression\n    series_omises_llm: seriesOmisses,\n    series_detaillees_llm: detailsAjoutes,\n    caracteres_llm: centreonFormate.length,\n    budget_caracteres_llm: CONFIG.maxCaracteresLLM,\n\n    // Historique complet (structure d'origine)\n    services,\n\n    // Résumés structurés, toutes dimensions conservées\n    resumes,\n\n    // Seul ce champ est envoyé à Gemma\n    centreon_formate: centreonFormate\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        752,
+        -304
+      ],
+      "id": "9b84c6e6-b91b-442f-81bd-beec4597b196",
+      "name": "Transformation Centreon"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// TRANSFORMATION LOGS LOKI\n// Compatible n8n 2.42.3\n// ============================================================\n\nconst streams = $input.first().json.data?.result || [];\n\nconst MAX_LOGS = 80;\nconst MAX_REPETITIONS = 2;\n\nconst logs = [];\n\n// 1. Extraire les logs Loki\nfor (const stream of streams) {\n  for (const [timestamp, message] of stream.values || []) {\n    const date = new Date(\n      Number(BigInt(timestamp) / 1000000n)\n    ).toISOString();\n\n    logs.push({\n      timestamp: date,\n      service:\n        stream.stream?.container ||\n        stream.stream?.systemd_unit ||\n        stream.stream?.service_name ||\n        stream.stream?.job ||\n        \"system\",\n      niveau:\n        stream.stream?.level ||\n        stream.stream?.priority ||\n        \"unknown\",\n      message: String(message)\n    });\n  }\n}\n\n// 2. Trier chronologiquement\nlogs.sort((a, b) =>\n  a.timestamp.localeCompare(b.timestamp)\n);\n\n// 3. Filtrer le bruit connu\nconst bruit = [\n  /guest-ping called/i\n];\n\n// 4. Repérer les messages importants\nconst important = [\n  /\\berror\\b|\\bwarn(?:ing)?\\b|\\bfail(?:ed|ure)?\\b/i,\n  /\\boom\\b|out of memory|segfault|kernel panic/i,\n  /\\binvoked with\\b/i,\n  /\\b(?:started|stopped|restarted|crashed)\\b/i,\n  /\\b(?:installed|removed|updated)\\b/i,\n  /\\b(?:ssh|sudo|cron|systemd)\\b/i,\n  /\\b(?:denied|timeout|refused|killed)\\b/i\n];\n\nconst retenus = [];\nconst repetitions = new Map();\n\nlet logsBruit = 0;\nlet logsRepetes = 0;\n\n// 5. Filtrage et dédoublonnage\nfor (const log of logs) {\n\n  if (bruit.some(regex => regex.test(log.message))) {\n    logsBruit++;\n    continue;\n  }\n\n  const messageNormalise = log.message\n    .replace(\n      /\\b\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z\\b/g,\n      \"<timestamp>\"\n    )\n    .replace(/\\bts=\\S+/g, \"ts=<timestamp>\");\n\n  const cle = `${log.service}|${messageNormalise}`;\n\n  const occurrences = repetitions.get(cle) || 0;\n\n  if (occurrences >= MAX_REPETITIONS) {\n    logsRepetes++;\n    continue;\n  }\n\n  repetitions.set(cle, occurrences + 1);\n\n  const prioritaire =\n    [\"error\", \"warn\", \"warning\", \"critical\", \"fatal\"]\n      .includes(log.niveau.toLowerCase()) ||\n    important.some(regex => regex.test(log.message));\n\n  retenus.push({\n    ...log,\n    prioritaire\n  });\n}\n\n// ============================================================\n// 6. SÉLECTION INTELLIGENTE DES LOGS\n// ============================================================\n\nconst evenementsCritiques = [\n  /\\b(?:stopping|shutting down|shutdown|stopped)\\b/i,\n  /\\b(?:starting|restarting|restarted|exited|terminated)\\b/i,\n  /\\b(?:sigkill|sigterm|sigint|interrupt signal)\\b/i,\n  /\\b(?:docker stop|docker kill|splunk stop)\\b/i,\n  /\\boom.?killed|out of memory|segfault|kernel panic/i,\n  /\\bfatal\\b|\\bcrash(?:ed)?\\b/i\n];\n\nfunction scoreLog(log) {\n  const message = log.message || \"\";\n  const niveau = (log.niveau || \"\").toLowerCase();\n\n  if (evenementsCritiques.some(regex => regex.test(message))) {\n    return 100;\n  }\n\n  if ([\"critical\", \"fatal\", \"error\"].includes(niveau)) {\n    return 80;\n  }\n\n  if (log.prioritaire && niveau !== \"warn\") {\n    return 60;\n  }\n\n  if ([\"warn\", \"warning\"].includes(niveau)) {\n    return 40;\n  }\n\n  return 10;\n}\n\n// Prioriser la pertinence, puis les événements récents\nconst selection = [...retenus]\n  .sort((a, b) => {\n    const differenceScore = scoreLog(b) - scoreLog(a);\n\n    if (differenceScore !== 0) {\n      return differenceScore;\n    }\n\n    return b.timestamp.localeCompare(a.timestamp);\n  })\n  .slice(0, MAX_LOGS)\n  .sort((a, b) =>\n    a.timestamp.localeCompare(b.timestamp)\n  );\n\n// 7. Texte envoyé à Gemma 4\nconst textePourIA = selection\n  .map(log =>\n    `[${log.timestamp}] [${log.service}] [${log.niveau}] ${log.message}`\n  )\n  .join(\"\\n\");\n\n// 8. Résultat n8n\nreturn [{\n  json: {\n    source: \"Loki\",\n    logs_disponibles: logs.length > 0,\n\n    nombre_logs_bruts: logs.length,\n    nombre_logs_apres_filtrage: retenus.length,\n    nombre_logs_transmis: selection.length,\n\n    logs_bruit: logsBruit,\n    logs_repetes: logsRepetes,\n    logs_omis: logs.length - selection.length,\n\n    logs: selection,\n\n    logs_formates:\n      textePourIA ||\n      \"Aucun log Loki disponible sur la période analysée.\"\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        384,
+        -304
+      ],
+      "id": "5c0394d5-043e-4d0a-8240-d6a90c8b7e77",
+      "name": "Transformation Log"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Alerte Centreon\nconst alerte = $('Webhook').first().json.body;\nconst output = String(alerte.output || \"\");\n\n// CSV des instances InfluxDB\nconst csv = $input.first().json.data;\n\nif (typeof csv !== \"string\") {\n  throw new Error(\"Liste des instances InfluxDB absente\");\n}\n\n// Extraction des instances\nconst lignes = csv.trim().split(/\\r?\\n/);\nconst headers = lignes[0].split(\",\");\nconst indexValeur = headers.indexOf(\"_value\");\n\nif (indexValeur === -1) {\n  throw new Error(\"Colonne _value absente du CSV\");\n}\n\nconst instances = lignes.slice(1)\n  .filter(ligne => ligne.trim())\n  .map(ligne => ligne.split(\",\")[indexValeur])\n  .filter(Boolean);\n\n// Échappement des caractères spéciaux pour les regex\nfunction echapperRegex(texte) {\n  return texte.replace(/[.*+?^${}()|[\\]\\\\]/g, \"\\\\$&\");\n}\n\n// Recherche des instances comme mots complets.\n// Les séparateurs autour du nom sont vérifiés pour\n// éviter les correspondances partielles.\nconst correspondances = instances.filter(instance => {\n  const nom = echapperRegex(instance);\n\n  const regex = new RegExp(\n    `(^|[^a-zA-Z0-9_-])${nom}(?=$|[^a-zA-Z0-9_-])`,\n    \"i\"\n  );\n\n  return regex.test(output);\n});\n\n// Une seule correspondance = instance identifiée.\n// Zéro ou plusieurs = pas de sélection arbitraire.\nconst instance = correspondances.length === 1\n  ? correspondances[0]\n  : null;\n\nreturn [{\n  json: {\n    host: alerte.host,\n    service: alerte.service,\n    status: alerte.status,\n    output,\n\n    instance,\n    instance_identifiee: instance !== null,\n\n    nombre_instances_disponibles: instances.length,\n    correspondances\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -688,
+        -32
+      ],
+      "id": "77345dba-250f-4cb8-b318-24bc09a216c5",
+      "name": "Identification instance"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://influxdb.example.internal:8086/api/v2/query?org=monitoring",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/vnd.flux"
+            },
+            {
+              "name": "Accept",
+              "value": "application/csv"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/vnd.flux",
+        "body": "={{\n(() => {\n  const alerte = $('Webhook').first().json.body;\n  const host = JSON.stringify(alerte.host);\n\n  return `\nfrom(bucket: \"centreon\")\n  |> range(start: -24h)\n  |> filter(fn: (r) => r[\"host.name\"] == ${host})\n  |> filter(fn: (r) => exists r[\"metric.instance\"])\n  |> keep(columns: [\"metric.instance\"])\n  |> group()\n  |> distinct(column: \"metric.instance\")\n`;\n})()\n}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        -880,
+        -32
+      ],
+      "id": "79d91ed5-46d8-41d4-b730-c6c9dc6516f1",
+      "name": "Recherche instances InfluxDB"
+    },
+    {
+      "parameters": {
+        "url": "https://centreon.example.com/centreon/api/latest/monitoring/hosts",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": []
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        2064,
+        -304
+      ],
+      "id": "dc83e864-0049-458b-9e19-ba463e70ba60",
+      "name": "Centreon Recherche Hôte"
+    },
+    {
+      "parameters": {
+        "url": "={{ 'https://centreon.example.com/centreon/api/latest/monitoring/hosts/' + $('Centreon Recherche Hôte').first().json.result.find(h => h.name === $('Webhook').first().json.body.host)?.id + '/services' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": []
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        2256,
+        -304
+      ],
+      "id": "03133454-f295-4a05-b272-9fd34ecd96da",
+      "name": "Centreon Recherche Service"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "470ce591-a023-4347-99ce-22e6c9994cf0",
+              "leftValue": "={{ (() => {\n  const alerte = $('Webhook').first().json.body;\n  const services = $('Centreon Recherche Service').first().json.result;\n  const correspondances = services.filter(s => s.description === alerte.service);\n\n  if (correspondances.length !== 1) return false;\n\n  const service = correspondances[0];\n\n  return (\n    alerte.notification_type === 'PROBLEM' &&\n    ['WARNING', 'CRITICAL', 'UNKNOWN'].includes(alerte.status) &&\n    service.state !== 0 &&\n    service.is_acknowledged === false &&\n    service.status?.name === alerte.status\n  );\n})() }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2480,
+        -304
+      ],
+      "id": "f575fb41-dd45-45e2-83d0-2732dcb8be99",
+      "name": "If1"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{\n(() => {\n  const host = $('Webhook').first().json.body.host;\n  const service = $('Webhook').first().json.body.service;\n\n  const hosts = $('Centreon Recherche Hôte').first().json.result;\n  const services = $('Centreon Recherche Service').first().json.result;\n\n  const h = hosts.filter(x => x.name === host);\n  const s = services.filter(x => x.description === service);\n\n  if (h.length !== 1 || s.length !== 1) {\n    throw new Error(\"Hôte ou service Centreon introuvable ou ambigu\");\n  }\n\n  return 'https://centreon.example.com/centreon/api/latest/monitoring/hosts/'\n    + h[0].id\n    + '/services/'\n    + s[0].id\n    + '/acknowledgements';\n})()\n}}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": []
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "comment",
+              "value": "={{ 'Incident pris en charge par n8n.\\nTicket GLPI : https://glpi.example.com/front/ticket.form.php?id=' + $('Création de ticket').first().json.id }}"
+            },
+            {
+              "name": "is_notify_contacts",
+              "value": "={{ false }}"
+            },
+            {
+              "name": "is_persistent_comment",
+              "value": "={{ true }}"
+            },
+            {
+              "name": "is_sticky",
+              "value": "={{ true }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        2736,
+        -304
+      ],
+      "id": "8dc28282-9edf-4dff-a7f5-7b4ecf483cf9",
+      "name": "Centreon Acquittement"
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Recherche instances InfluxDB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Token GLPI": {
+      "main": [
+        [
+          {
+            "node": "Recherche ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recherche ID": {
+      "main": [
+        [
+          {
+            "node": "Loki Get Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Création de ticket": {
+      "main": [
+        [
+          {
+            "node": "Centreon Recherche Hôte",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loki Get Log": {
+      "main": [
+        [
+          {
+            "node": "Transformation Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Création de ticket",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PROBLEM OR RESOLVED": {
+      "main": [
+        [
+          {
+            "node": "Get Token GLPI",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get Token GLPI1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Token GLPI1": {
+      "main": [
+        [
+          {
+            "node": "Recherche ID Ticket",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recherche ID Ticket": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SOLUTION de ticket": {
+      "main": [
+        [
+          {
+            "node": "GET Ticket complet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "SOLUTION de ticket",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prometheus Get Metrics": {
+      "main": [
+        [
+          {
+            "node": "Transformation Prometheus",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transformation Prometheus": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GET Ticket complet": {
+      "main": [
+        [
+          {
+            "node": "Code Validation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Embeddings": {
+      "main": [
+        [
+          {
+            "node": "Format Qdrant",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code Validation": {
+      "main": [
+        [
+          {
+            "node": "Ollama Embeddings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Qdrant": {
+      "main": [
+        [
+          {
+            "node": "Qdrant insert hybride",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Qdrant insert hybride": {
+      "main": [
+        [
+          {
+            "node": "CLOSE de ticket",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "InfluxDB Get Metric": {
+      "main": [
+        [
+          {
+            "node": "Transformation Centreon",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transformation Centreon": {
+      "main": [
+        [
+          {
+            "node": "Prometheus Get Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transformation Log": {
+      "main": [
+        [
+          {
+            "node": "InfluxDB Get Metric",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Identification instance": {
+      "main": [
+        [
+          {
+            "node": "PROBLEM OR RESOLVED",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recherche instances InfluxDB": {
+      "main": [
+        [
+          {
+            "node": "Identification instance",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Centreon Recherche Hôte": {
+      "main": [
+        [
+          {
+            "node": "Centreon Recherche Service",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Centreon Recherche Service": {
+      "main": [
+        [
+          {
+            "node": "If1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If1": {
+      "main": [
+        [
+          {
+            "node": "Centreon Acquittement",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false,
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner"
+  }
+}
